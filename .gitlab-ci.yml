@@ -1,11 +1,10 @@
-image: busybox
-
 pages:
   stage: deploy
   script:
-    - echo "The site will be deployed to $CI_PAGES_URL"
+    - echo "Deploying GitLab Pages..."   # 可以留個訊息，但不是必要
   artifacts:
     paths:
-      - public
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      - public      # 這個資料夾內容會直接被部署
+  only:
+    - main          # 只在 main branch 執行
+
