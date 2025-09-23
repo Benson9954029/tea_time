@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>線上泡茶鬧鐘</title>
+<style>
+body { font-family:sans-serif; max-width:800px; margin:20px auto; text-align:center;}
+table { width:100%; border-collapse: collapse; margin-top:10px;}
+th, td { border:1px solid #aaa; padding:5px; text-align:center;}
+input[type="number"]{ width:70px; }
+button{ margin:5px; padding:6px 12px;}
+#countdown { font-size:2em; margin-top:15px; color:#006600;}
+#manualCountdown { font-size:1.8em; margin-top:10px; color:#003366;}
+fieldset { border:1px solid #ccc; padding:10px; margin-top:25px;}
+legend { padding:0 6px;}
+textarea { resize:none; }
+.flex-row { display:flex; align-items:flex-start; gap:20px; margin-top:10px;}
+</style>
+</head>
+<body>
+
+<h1>🍵 泡茶鬧鐘</h1>
+
+<!-- ========= 自動茶譜版本 ========= -->
+<div>
+    <label>
+        茶譜僅供參考，實際的置茶量、是否要溫潤泡、沖泡時間、回沖次數等、請依個人喜好與習慣調整。</br>
+        調整好後的茶譜可以匯出再匯入訂製自己的泡茶食譜。</br>
+        </br>
+    </label>
+    <label>預設茶譜：
+        <select id="preset">
+            <option value="">--請選擇--</option>
+            <option value="紅茶">紅茶</option>
+            <option value="東方美人茶">東方美人茶</option>
+            <option value="高山茶">高山茶</option>
+            <option value="凍頂烏龍茶">凍頂烏龍茶</option>
+        </select>
+    </label>
+    <div style="margin-top:10px;">
+        <button id="exportBtn">匯出 設定檔</button>
+        匯入設定檔
+        <input type="file" id="importFile" accept=".json">
+    </div>
+</div>
+
+<div class="flex-row">
+    <div>
+        <label>第一泡(秒)：<input type="number" id="first" value="30" min="1"></label>
+        <label>每泡增加(秒)：<input type="number" id="increment" value="15" min="0"></label>
+        <button id="generateBtn">產生時間表</button>
+    </div>
+    <div>
+        <label>茶注意事項：</label><br>
+        <textarea id="teaNote" rows="6" cols="30" placeholder="這裡顯示茶的注意事項..."></textarea>
+    </div>
+</div>
+
+<table id="timeTable">
+    <thead><tr><th>泡數</th><th>時間(秒)</th></tr></thead>
+    <tbody></tbody>
+</table>
+
+<div>
+    <button id="addBatchBtn">➕ 新增一泡</button>
+    <button id="removeBatchBtn">➖ 減少一泡</button>
+</div>
+
+<hr>
+<h2>⏳ 自動計時</h2>
+<div>
+    <button id="startBtn">▶ 開始</button>
+    <button id="nextBtn" disabled>➡ 下一泡</button>
+    <button id="stopBtn">⏹ 停止</button>
+</div>
+<div id="countdown">尚未開始</div>
+
+<audio id="alarmSound">
+    <source src="bell_notify.mp3" type="audio/mpeg">
+    你的瀏覽器不支援音效播放
+</audio>
+
+<!-- ========= 手動計時版本 ========= -->
+<fieldset>
+    <legend>🔧 手動單次計時</legend>
+    <div>
+        <label>秒數：
+            <input type="number" id="manualSec" value="60" min="1">
+        </label>
+        <button id="manualStart">▶ 開始</button>
+        <button id="manualStop">⏹ 停止</button>
+    </div>
+    <div id="manualCountdown">尚未開始</div>
+</fieldset>
+
+<script>
+const presets={
+    "紅茶"      :[60,70,80,85,90,95,100],
+    "東方美人茶":[60,70,80,85,90,95,100],
+    "高山茶"    :[50,60,70,75,80,85,90],
+    "凍頂烏龍茶":[50,60,70,75,80,85,90],
+};
+
+const teaNotes = {
+    "紅茶"      : "水溫90-92,1g:50ml",
+    "東方美人茶": "水溫90-92,1g:50ml",
+    "高山茶"    : "水溫95-100,10g:200ml",
+    "凍頂烏龍茶": "水溫95-100,10g:200ml"
+};
+
+const tbody = document.querySelector("#timeTable tbody");
+const countdownEl = document.getElementById("countdown");
+const alarm = document.getElementById("alarmSound");
+const presetSel = document.getElementById("preset");
+const firstInput = document.getElementById("first");
+const incrementInput = document.getElementById("increment");
+const startBtn = document.getElementById("startBtn");
+const nextBtn = document.getElementById("nextBtn");
+const stopBtn = document.getElementById("stopBtn");
+const generateBtn = document.getElementById("generateBtn");
+const exportBtn = document.getElementById("exportBtn");
+const importFile = document.getElementById("importFile");
+const addBatchBtn = document.getElementById("addBatchBtn");
+const removeBatchBtn = document.getElementById("removeBatchBtn");
+const teaNoteInput = document.getElementById("teaNote");
+
+let timer = null;
+let currentIndex = 0;
+let times = [];
+
+function fillTable(arr){
+    tbody.innerHTML="";
+    arr.forEach((sec,i)=>{
+        const tr = document.createElement("tr");
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = sec;
+        input.min = 0;
+        input.style.width = "70px";
+        input.addEventListener("input", ()=>{
+            if(times[i] !== undefined){
+                times[i] = parseInt(input.value) || 0;
+            }
+        });
+        tr.innerHTML = `<td>第${i+1}泡</td>`;
+        const td = document.createElement("td");
+        td.appendChild(input);
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    });
+}
+
+function generate(){
+    const first = parseInt(firstInput.value) || 0;
+    const inc = parseInt(incrementInput.value) || 0;
+    const arr=[];
+    const rows = tbody.querySelectorAll("tr");
+    let length = rows.length || 10;
+    for(let i=0;i< length;i++) arr.push(first + i*inc);
+    fillTable(arr);
+}
+
+function getTimes(){
+    return Array.from(tbody.querySelectorAll("input")).map(i=>parseInt(i.value)||0);
+}
+
+function startTimer(){
+    stopTimer();
+    times = getTimes();
+    currentIndex = 0;
+    startBtn.disabled = true;
+    nextBtn.disabled = true;
+    runCurrent();
+}
+
+function runCurrent(){
+    if(currentIndex >= times.length){
+        countdownEl.textContent = "全部完成！🍵";
+        startBtn.disabled = false;
+        nextBtn.disabled = true;
+        return;
+    }
+    let remain = times[currentIndex];
+    countdownEl.textContent = `第${currentIndex+1}泡：${remain} 秒`;
+    timer = setInterval(()=>{
+        remain--;
+        countdownEl.textContent = `第${currentIndex+1}泡：${remain} 秒`;
+        if(remain <= 0){
+            clearInterval(timer);
+            countdownEl.textContent = `第${currentIndex+1}泡完成，請倒茶/注水 🍵`;
+            alarm.currentTime = 0;
+            alarm.play();
+            nextBtn.disabled = false;
+            let temp = currentIndex + 1;
+            if(temp >= times.length)
+            {
+                manualSecInput.value = times[currentIndex] + parseInt(incrementInput.value);
+            }
+            else
+            {
+                manualSecInput.value = times[temp];
+            }
+        }
+    },1000);
+}
+
+function continueNext(){
+    currentIndex++;
+    nextBtn.disabled = true;
+    runCurrent();
+}
+
+function stopTimer(){
+    clearInterval(timer);
+    countdownEl.textContent="已停止";
+    startBtn.disabled = false;
+    nextBtn.disabled = true;
+}
+
+// ===== 匯出/匯入整合注意事項 =====
+exportBtn.onclick = ()=>{
+    const timesData = getTimes();
+    const note = teaNoteInput.value;
+    const data = {times: timesData, note: note};
+    const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tea_timer.json";
+    a.click();
+    URL.revokeObjectURL(url);
+};
+
+importFile.onchange = (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+        try{
+            const obj = JSON.parse(reader.result);
+            if(Array.isArray(obj.times)){
+                fillTable(obj.times);
+            }
+            if(obj.note !== undefined){
+                teaNoteInput.value = obj.note;
+            }
+        } catch(err){
+            alert("匯入失敗：檔案格式錯誤");
+        }
+    };
+    reader.readAsText(file);
+};
+
+presetSel.onchange = ()=> {
+    if(presets[presetSel.value]) {
+        fillTable(presets[presetSel.value]);
+        teaNoteInput.value = teaNotes[presetSel.value] || "";
+    }
+};
+
+addBatchBtn.onclick = () => {
+    const inputs = tbody.querySelectorAll("input");
+    const lastTime = inputs.length ? parseInt(inputs[inputs.length-1].value) || 0 : parseInt(firstInput.value) || 0;
+    const increment = parseInt(incrementInput.value) || 0;
+    const newTime = lastTime + increment;
+
+    const tr = document.createElement("tr");
+    const input = document.createElement("input");
+    input.type = "number";
+    input.value = newTime;
+    input.min = 0;
+    input.style.width = "70px";
+    const newIndex = inputs.length;
+    input.addEventListener("input", ()=>{
+        if(times[newIndex] !== undefined){
+            times[newIndex] = parseInt(input.value) || 0;
+        }
+    });
+    tr.innerHTML = `<td>第${newIndex+1}泡</td>`;
+    const td = document.createElement("td");
+    td.appendChild(input);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    if(timer !== null || currentIndex < times.length){
+        times.push(newTime);
+        nextBtn.disabled = false;
+    }
+};
+
+removeBatchBtn.onclick = () => {
+    const rows = tbody.querySelectorAll("tr");
+    if(rows.length > 1){
+        tbody.removeChild(rows[rows.length-1]);
+        times.pop();
+    }
+};
+
+generateBtn.onclick = generate;
+startBtn.onclick = startTimer;
+nextBtn.onclick = continueNext;
+stopBtn.onclick = stopTimer;
+
+generate();
+
+/* ======= 手動計時版本 ======= */
+const manualStartBtn = document.getElementById("manualStart");
+const manualStopBtn  = document.getElementById("manualStop");
+const manualSecInput = document.getElementById("manualSec");
+const manualCountdown = document.getElementById("manualCountdown");
+let manualTimer = null;
+
+function manualStart(){
+    manualStop();
+    let remain = parseInt(manualSecInput.value) || 0;
+    if(remain <= 0){ manualCountdown.textContent = "請輸入正確秒數"; return; }
+    manualCountdown.textContent = `剩餘：${remain} 秒`;
+    manualTimer = setInterval(()=>{
+        remain--;
+        manualCountdown.textContent = `剩餘：${remain} 秒`;
+        if(remain <= 0){
+            clearInterval(manualTimer);
+            manualCountdown.textContent = "完成！🍵";
+            alarm.currentTime = 0;
+            alarm.play();
+        }
+    },1000);
+}
+function manualStop(){
+    clearInterval(manualTimer);
+    manualCountdown.textContent = "已停止";
+}
+manualStartBtn.onclick = manualStart;
+manualStopBtn.onclick = manualStop;
+</script>
+</body>
+</html>
+
