@@ -185,6 +185,7 @@ function runCurrent(){
     timer = setInterval(()=>{
         remain--;
         countdownEl.textContent = `第${currentIndex+1}泡：${remain} 秒`;
+        document.title = `🍵 第${currentIndex+1}泡：${remain}秒`;
         if(remain <= 0){
             clearInterval(timer);
             countdownEl.textContent = `第${currentIndex+1}泡完成，請倒茶/注水 🍵`;
