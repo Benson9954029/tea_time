@@ -89,6 +89,7 @@ textarea { resize:none; }
         </label>
         <button id="manualStart">▶ 開始</button>
         <button id="manualStop">⏹ 停止</button>
+        <button id="manualIncrease">自動增加秒數</button>
     </div>
     <div id="manualCountdown">尚未開始</div>
 </fieldset>
@@ -304,10 +305,11 @@ stopBtn.onclick = stopTimer;
 generate();
 
 /* ======= 手動計時版本 ======= */
-const manualStartBtn = document.getElementById("manualStart");
-const manualStopBtn  = document.getElementById("manualStop");
-const manualSecInput = document.getElementById("manualSec");
-const manualCountdown = document.getElementById("manualCountdown");
+const manualStartBtn    = document.getElementById("manualStart");
+const manualStopBtn     = document.getElementById("manualStop");
+const manualIncreaseBtn = document.getElementById("manualIncrease");
+const manualSecInput    = document.getElementById("manualSec");
+const manualCountdown   = document.getElementById("manualCountdown");
 let manualTimer = null;
 
 function manualStart(){
@@ -318,6 +320,7 @@ function manualStart(){
     manualTimer = setInterval(()=>{
         remain--;
         manualCountdown.textContent = `剩餘：${remain} 秒`;
+        document.title = `🍵 手動 剩餘：${remain} 秒`;
         if(remain <= 0){
             clearInterval(manualTimer);
             manualCountdown.textContent = "完成！🍵";
@@ -330,8 +333,25 @@ function manualStop(){
     clearInterval(manualTimer);
     manualCountdown.textContent = "已停止";
 }
+function manualIncrease(){
+    manualSecInput.value = (parseInt(manualSecInput.value) || 0) + (parseInt(incrementInput.value) || 0);
+}
 manualStartBtn.onclick = manualStart;
 manualStopBtn.onclick = manualStop;
+manualIncreaseBtn.onclick = manualIncrease
+
+document.addEventListener('keydown', (event) => {
+  const keyName = event.key;
+  if (keyName === 'n') {
+      continueNext();
+  }
+  if (keyName === 'i') {
+      manualIncrease();
+  }
+  if (keyName === 'm') {
+      manualStart();
+  }
+});
 </script>
 </body>
 </html>
